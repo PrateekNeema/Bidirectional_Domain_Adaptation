@@ -151,8 +151,8 @@ class CDSAgent(BaseAgent):
         #     f'data/splits/{name}/{domain["target"]}.txt'
         # )
 
-        self.src_num_classes = 7
-        self.tgt_num_classes = 23
+        self.src_num_classes = 7  ## dslr 
+        self.tgt_num_classes = 23  ## amazon
         self.num_class = 31
 
         #self.class_map =
@@ -633,7 +633,7 @@ class CDSAgent(BaseAgent):
                     mask_pseudo = aux["mask"]
 
                     # updating fewshot memory bank
-                    if domain_name == ["source"]:
+                    if domain_name == "source":
                         mb = self.get_attr("source", "memory_bank_wrapper")
                         indices_lbd_tounl = fewshot_index_src[indices_lbd]           ##  indices of fewhshots
                         mb_feat_lbd = mb.at_idxs(indices_lbd_tounl)                     ## current mem bank repres of fewshots
