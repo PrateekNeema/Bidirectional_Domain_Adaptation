@@ -33,6 +33,7 @@ ls_abbr = {
 
 class CDSAgent(BaseAgent):
     #################################
+    # -----------------------------------DONE------------------------------------------
     def __init__(self, config):
         self.config = config
         self._define_task(config)
@@ -47,6 +48,7 @@ class CDSAgent(BaseAgent):
         #####################
         super(CDSAgent, self).__init__(config)    ##here the load_datasets,etc functions are called of CDS agent through base agent class
         #********************    @@@@@@@@decpetive place -a lot is happening from here
+        # done
 
         # for MIM
         self.momentum_softmax_target = torchutils.MomentumSoftmax(
@@ -72,6 +74,7 @@ class CDSAgent(BaseAgent):
         self._load_fewshot_to_cls_weight()
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def _define_task(self, config):
         # specify task
         self.fewshot = config.data_params.fewshot    #1
@@ -89,7 +92,9 @@ class CDSAgent(BaseAgent):
         self.is_pseudo_src = self.is_pseudo_src | (            #true
             config.loss_params.pseudo and self.fewshot is not None
         )
-        self.is_pseudo_tgt = self.is_pseudo_tgt | config.loss_params.pseudo        #true
+        self.is_pseudo_tgt = self.is_pseudo_tgt | (
+            config.loss_params.pseudo and self.fewshot is not None   #true
+        )
         self.semi = self.semi | self.is_pseudo_src         #true
         if self.clus:
             self.is_pseudo_tgt = self.is_pseudo_tgt | (                      #true
@@ -97,24 +102,37 @@ class CDSAgent(BaseAgent):
             )
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def _init_labels(self):
         train_len_tgt = self.get_attr("target", "train_len")
         train_len_src = self.get_attr("source", "train_len")
 
         # labels for pseudo
         if self.fewshot:
+
             self.predict_ordered_labels_pseudo_source = (
-                torch.zeros(train_len_src, dtype=torch.long).detach().cuda() - 1    ##tensor of labels as 0 for all samples of source
+                torch.zeros(train_len_src, dtype=torch.long).detach().cuda() - 1    ##tensor of labels as -1 for all samples of source
             )
             for ind, lbl in zip(self.fewshot_index_source, self.fewshot_label_source):
-                self.predict_ordered_labels_pseudo_source[ind] = lbl  ##setting values of fewshot images to known labels
-        self.predict_ordered_labels_pseudo_target = (
-            torch.zeros(train_len_tgt, dtype=torch.long).detach().cuda() - 1
-        )     ##labels of all samples of target
+                self.predict_ordered_labels_pseudo_source[ind] = lbl
+                ##setting values of fewshot images to known labels
 
+            self.predict_ordered_labels_pseudo_target = (
+                    torch.zeros(train_len_tgt, dtype=torch.long).detach().cuda() - 1     ##tensor of labels as -1 for all samples of source
+            )
+            for ind, lbl in zip(self.fewshot_index_target, self.fewshot_label_target):
+                self.predict_ordered_labels_pseudo_target[ind] = lbl
+                ##setting values of fewshot images to known labels
+
+
+
+        # self.predict_ordered_labels_pseudo_target = (
+        #     torch.zeros(train_len_tgt, dtype=torch.long).detach().cuda() - 1
+        # )     ##labels of all samples of target
         #$$$$$$$ add code of line 107 here to set values of fewshot iamges in target to known values$$$$$$$$
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def _load_datasets(self):
         name = self.config.data_params.name     #office
         num_workers = self.config.data_params.num_workers  #4
@@ -125,13 +143,19 @@ class CDSAgent(BaseAgent):
         aug_tgt = self.config.data_params.aug_tgt   #"aug_0"
         raw = "raw"
 
-        ##assuming that all classes are there in the source and therfore they have just taken self.num_class as classes in source dataset
-        self.num_class = datautils.get_class_num(           ##returns num of classes in dslr.txt (source)
-            f'data/splits/{name}/{domain["source"]}.txt'
-        )
-        self.class_map = datautils.get_class_map(            ## returns dictionary with class index and names in dslr.txt
-            f'data/splits/{name}/{domain["target"]}.txt'
-        )
+        # ##assuming that all classes are there in the source and therfore they have just taken self.num_class as classes in source dataset
+        # self.num_class = datautils.get_class_num(           ##returns num of classes in dslr.txt (source)
+        #     f'data/splits/{name}/{domain["source"]}.txt'
+        # )
+        # self.class_map = datautils.get_class_map(            ## returns dictionary with class index and names in dslr.txt
+        #     f'data/splits/{name}/{domain["target"]}.txt'
+        # )
+
+        self.src_num_classes = 7
+        self.tgt_num_classes = 23
+        self.num_class = 31
+
+        #self.class_map =
 
         batch_size_dict = {
             "test": self.config.optim_params.batch_size,   #64
@@ -186,14 +210,25 @@ class CDSAgent(BaseAgent):
             self.set_attr(domain_name, "train_len", len(train_dataset))
             ##note that these were for the complete datasets
 
-        # Classification and Fewshot Dataset
+        # for loop ends
 
+        # Classification and Fewshot Dataset
         if fewshot:
+
             train_lbd_dataset_source = datautils.create_dataset(
                 name,
                 domain["source"],          #dslr
-                suffix=f"labeled_{fewshot}",
+                suffix=f"bi_labeled_{fewshot}",
                 ret_index=True,                                ##note that keep_in_mem = False
+                image_transform=aug_src,
+                image_size=image_size,
+            )
+
+            train_lbd_dataset_target = datautils.create_dataset(
+                name,
+                domain["target"],  # amazon
+                suffix=f"bi_labeled_{fewshot}",
+                ret_index=True,                                        ##note that keep_in_mem = False
                 image_transform=aug_src,
                 image_size=image_size,
             )
@@ -202,20 +237,36 @@ class CDSAgent(BaseAgent):
             ##only these images will be present in this object
 
             src_dataset = self.get_attr("source", "train_dataset")
+            tgt_dataset = self.get_attr("target", "train_dataset")
             (
                 self.fewshot_index_source,
                 self.fewshot_label_source,
             ) = datautils.get_fewshot_index(train_lbd_dataset_source, src_dataset)
+            (
+                self.fewshot_index_target,
+                self.fewshot_label_target,
+            ) = datautils.get_fewshot_index(train_lbd_dataset_target, tgt_dataset)
+
             ##index of fewshots in complete dataset and their labels
 
             test_unl_dataset_source = datautils.create_dataset(
                 name,
                 domain["source"],
-                suffix=f"unlabeled_{fewshot}",
+                suffix=f"bi_unlabeled_{fewshot}",
                 ret_index=True,
                 image_transform=raw,      #@@@@@@@@@
                 image_size=image_size,
             )
+
+            test_unl_dataset_target = datautils.create_dataset(
+                name,
+                domain["target"],
+                suffix=f"bi_unlabeled_{fewshot}",
+                ret_index=True,
+                image_transform=raw,  # @@@@@@@@@
+                image_size=image_size,
+            )
+
             ###the images that are officially unlabbeld in the source...basically complete dataset - fewshots
 
             self.test_unl_loader_source = datautils.create_loader(
@@ -224,15 +275,32 @@ class CDSAgent(BaseAgent):
                 is_train=False,
                 num_workers=num_workers,
             )
+            self.test_unl_loader_target = datautils.create_loader(
+                test_unl_dataset_target,
+                batch_size_dict["test"],
+                is_train=False,
+                num_workers=num_workers,
+            )
 
-            # labels for fewshot
-            train_len = self.get_attr("source", "train_len")
-            self.fewshot_labels = (
-                torch.zeros(train_len, dtype=torch.long).detach().cuda() - 1
+            # labels for source fewshot
+            train_len_src = self.get_attr("source", "train_len")
+            self.fewshot_labels_in_source = (
+                torch.zeros(train_len_src, dtype=torch.long).detach().cuda() - 1
             )
             for ind, lbl in zip(self.fewshot_index_source, self.fewshot_label_source):
-                self.fewshot_labels[ind] = lbl
+                self.fewshot_labels_in_source[ind] = lbl
             ##creating a tensor of fewshot index and label
+
+            # labels for target fewshot
+            train_len_tgt = self.get_attr("target", "train_len")
+            self.fewshot_labels_in_target = (
+                torch.zeros(train_len_tgt, dtype=torch.long).detach().cuda() - 1
+            )
+            for ind, lbl in zip(self.fewshot_index_target, self.fewshot_label_target):
+                self.fewshot_labels_in_target[ind] = lbl
+            ##creating a tensor of fewshot index and label
+
+
 
         else:   ##when fewshot is 0/False
             train_lbd_dataset_source = datautils.create_dataset(
@@ -242,18 +310,27 @@ class CDSAgent(BaseAgent):
                 image_transform=aug_src,
                 image_size=image_size,
             )
+            train_lbd_dataset_target = datautils.create_dataset(
+                name,
+                domain["target"],
+                ret_index=True,
+                image_transform=aug_src,
+                image_size=image_size,
+            )
+
 
         ###############
-        test_suffix = "test" if self.config.data_params.train_val_split else ""          ###""
-        test_unl_dataset_target = datautils.create_dataset(
-            name,
-            domain["target"],       ##amazon
-            suffix=test_suffix,
-            ret_index=True,
-            image_transform=raw,
-            image_size=image_size,
-        )
+        # test_suffix = "test" if self.config.data_params.train_val_split else ""          ###""
+        # test_unl_dataset_target = datautils.create_dataset(
+        #     name,
+        #     domain["target"],       ##amazon
+        #     suffix=test_suffix,
+        #     ret_index=True,
+        #     image_transform=raw,
+        #     image_size=image_size,
+        # )
         ##Complete amamzon dataset for ___testing___
+        #no need -- defined earlier
 
 
         self.train_lbd_loader_source = datautils.create_loader(
@@ -261,13 +338,19 @@ class CDSAgent(BaseAgent):
             batch_size_dict["labeled"],
             num_workers=num_workers,
         )
-
-        self.test_unl_loader_target = datautils.create_loader(
-            test_unl_dataset_target,
-            batch_size_dict["test"],
-            is_train=False,
+        self.train_lbd_loader_target = datautils.create_loader(
+            train_lbd_dataset_target,
+            batch_size_dict["labeled"],
             num_workers=num_workers,
         )
+
+        # self.test_unl_loader_target = datautils.create_loader(
+        #     test_unl_dataset_target,
+        #     batch_size_dict["test"],
+        #     is_train=False,
+        #     num_workers=num_workers,
+        # )
+        # no need -- defined earlier
         ###the two dataloader objects
 
         self.logger.info(
@@ -275,6 +358,7 @@ class CDSAgent(BaseAgent):
         )
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def _create_model(self):
         version_grp = self.config.model_params.version.split("-")
         version = version_grp[-1]                               ## resnet50
@@ -312,6 +396,7 @@ class CDSAgent(BaseAgent):
             self.cls_head = cls_head.cuda()      ##cosine classifer model is ready now
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def _create_optimizer(self):
         lr = self.config.optim_params.learning_rate
         momentum = self.config.optim_params.momentum
@@ -364,6 +449,7 @@ class CDSAgent(BaseAgent):
             self.optim_iterdecayLR = torchutils.lr_scheduler_invLR(self.optim)
 
     #################
+    # -----------------------------------DONE------------------------------------------
     def train_one_epoch(self):
         # train preparation
         self.model = self.model.train()          ##set the model in training mode
@@ -405,7 +491,8 @@ class CDSAgent(BaseAgent):
         # load weight
         self._load_fewshot_to_cls_weight()
         if self.fewshot:
-            fewshot_index = torch.tensor(self.fewshot_index_source).cuda()  ##tensor of fewshot_index
+            fewshot_index_src = torch.tensor(self.fewshot_index_source).cuda()  ##tensor of fewshot_index
+            fewshot_index_tgt = torch.tensor(self.fewshot_index_target).cuda()  ##tensor of fewshot_index
 
         tqdm_batch = tqdm(
             total=num_batches, desc=f"[Epoch {self.current_epoch}]", leave=False
@@ -449,8 +536,12 @@ class CDSAgent(BaseAgent):
             else:
                 source_lbd_iter = iter(self.train_lbd_loader_source)
 
+            # iteration over all labeled target images
+            if self.cls and not batch_i % len(self.train_lbd_loader_target):
+                target_lbd_iter = iter(self.train_lbd_loader_target)
+            else:
+                target_lbd_iter = iter(self.train_lbd_loader_target)
 
-            # $$$ might want to add for target_labelled as well
 
             # calculate loss
             for domain_name in ("source", "target"):
@@ -460,7 +551,7 @@ class CDSAgent(BaseAgent):
                 loss_part_d = [0] * num_loss
                 batch_size = self.batch_size_dict[domain_name]
 
-                if self.cls and domain_name == "source":
+                if self.cls:                                                     # and domain_name == "source":
                     indices_lbd, images_lbd, labels_lbd = next(source_lbd_iter)
                     #these are the indices,images and labels of the feshots in the source
                     indices_lbd = indices_lbd.cuda()
@@ -472,9 +563,9 @@ class CDSAgent(BaseAgent):
                     out_lbd = self.cls_head(feat_lbd)   ##passing fewshot images through model and cls_head
                     ##softmax is only used to get probabilities
 
-                # Matching & ssl
-                if (self.tgt and domain_name == "target") or self.ssl:       ## False or True = True
-
+                # Matching & ssl ###########????
+                #if (self.tgt and domain_name == "target") or self.ssl:       ## False or True = True
+                if self.ssl:
                     loader_iter = (
                         source_iter if domain_name == "source" else target_iter        ##for 1st passage it is source_iter
                     )
@@ -491,9 +582,14 @@ class CDSAgent(BaseAgent):
 
                 # Semi Supervised
                 if self.semi and domain_name == "source":
-                    semi_mask = ~torchutils.isin(indices_unl, fewshot_index)   ## What is this??
+                    semi_mask = ~torchutils.isin(indices_unl, fewshot_index_src)   ## What is this??
                     ## My guess is it is a tensor with True at fewhsot indices and False elsewhere
+                    indices_semi = indices_unl[semi_mask]          # ??  # guess - Only unlablled indices
+                    out_semi = out_unl[semi_mask]                  # ??   ## only unlablled outputs from the models
 
+                if self.semi and domain_name == "target":
+                    semi_mask = ~torchutils.isin(indices_unl, fewshot_index_tgt)   ## What is this??
+                    ## My guess is it is a tensor with True at fewhsot indices and False elsewhere
                     indices_semi = indices_unl[semi_mask]          # ??  # guess - Only unlablled indices
                     out_semi = out_unl[semi_mask]                  # ??   ## only unlablled outputs from the models
 
@@ -520,9 +616,9 @@ class CDSAgent(BaseAgent):
                         out_pseudo = out_semi                   ## outputs of only unlablled images through models
                         pseudo_domain = self.predict_ordered_labels_pseudo_source  ##samples with labels = -1 except fewshot ones
                     else:
-                        indices_pseudo = indices_unl
-                        out_pseudo = out_unl  # [bs, class_num]
-                        pseudo_domain = self.predict_ordered_labels_pseudo_target
+                        indices_pseudo = indices_semi  ## only unlablled indices here
+                        out_pseudo = out_semi  ## outputs of only unlablled images through models
+                        pseudo_domain = self.predict_ordered_labels_pseudo_target  ##samples with labels = -1 except fewshot ones
 
                     thres = thres_dict[domain_name]
 
@@ -537,10 +633,16 @@ class CDSAgent(BaseAgent):
                     mask_pseudo = aux["mask"]
 
                     # updating fewshot memory bank
-                    mb = self.get_attr("source", "memory_bank_wrapper")
-                    indices_lbd_tounl = fewshot_index[indices_lbd]           ##  indices of fewhshots
-                    mb_feat_lbd = mb.at_idxs(indices_lbd_tounl)                     ## current mem bank repres of fewshots
-                    fewshot_data_memory = update_data_memory(mb_feat_lbd, feat_lbd)   ## new updated mem bank ouput repre of fewshots
+                    if domain_name == ["source"]:
+                        mb = self.get_attr("source", "memory_bank_wrapper")
+                        indices_lbd_tounl = fewshot_index_src[indices_lbd]           ##  indices of fewhshots
+                        mb_feat_lbd = mb.at_idxs(indices_lbd_tounl)                     ## current mem bank repres of fewshots
+                        fewshot_data_memory_src = update_data_memory(mb_feat_lbd, feat_lbd)   ## new updated mem bank ouput repre of fewshots
+                    else:
+                        mb = self.get_attr("target", "memory_bank_wrapper")
+                        indices_lbd_tounl = fewshot_index_tgt[indices_lbd]  ##  indices of fewhshots
+                        mb_feat_lbd = mb.at_idxs(indices_lbd_tounl)  ## current mem bank repres of fewshots
+                        fewshot_data_memory_tgt = update_data_memory(mb_feat_lbd,feat_lbd)  ## new updated mem bank ouput repre of fewshots
 
                     # stat
                     pred_selected = out_pseudo.argmax(dim=1)[mask_pseudo]   ## predictions of high confidence
@@ -565,10 +667,14 @@ class CDSAgent(BaseAgent):
                     # *** handler for different loss ***
 
                     # classification on few-shot
-                    if ls == "cls-so" and domain_name == "source":
+                    # ## will be done on both
+                    if ls == "cls-so":                                  #and domain_name == "source":
                         loss_part = self.criterion(out_lbd, labels_lbd)        ## cross entropy loss on fewshots
-                    elif ls == "cls-info" and domain_name == "source":
+
+                    # ## will be done on both
+                    elif ls == "cls-info":                               # and domain_name == "source":
                         loss_part = loss_info(feat_lbd, mb_feat_lbd, labels_lbd)
+
                     # semi-supervision learning on unlabled source
                     elif ls == "semi-entmin" and domain_name == "source":
                         loss_part = torchutils.entropy(out_semi)
@@ -612,6 +718,7 @@ class CDSAgent(BaseAgent):
                             prob_mean_unl * torch.log(momentum_prob_target + 1e-5)
                         )
                         loss_part = -entropy_cond
+
                     # self-supervised learning
                     elif ls.split("-")[0] in ["ID", "CD", "proto", "I2C", "C2C"]:
                         loss_part = loss_ssl[ind]
@@ -633,7 +740,11 @@ class CDSAgent(BaseAgent):
 
                     if domain_name == "source":               ## $$$$$$$$$$$
                         self._update_memory_bank(                                     ## put this fewwhshot_data_mem at these indices for source
-                            domain_name, indices_lbd_tounl, fewshot_data_memory
+                            domain_name, indices_lbd_tounl, fewshot_data_memory_src
+                        )
+                    if domain_name == "target":               ## $$$$$$$$$$$
+                        self._update_memory_bank(                                     ## put this fewwhshot_data_mem at these indices for source
+                            domain_name, indices_lbd_tounl, fewshot_data_memory_tgt
                         )   ## add for target as well
 
                 # update lr info
@@ -678,7 +789,8 @@ class CDSAgent(BaseAgent):
 
         self.current_loss = epoch_loss.avg
 
-    #$$$$$$$$$$$$$$$$$############ depends on current epoch
+    #################
+    # -----------------------------------DONE------------------------------------------
     @torch.no_grad()
     def _load_fewshot_to_cls_weight(self):
         """load centroids to cosine classifier           #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -692,7 +804,7 @@ class CDSAgent(BaseAgent):
             return
         assert method in ["fewshot", "src", "tgt", "src-tgt", "fewshot-tgt"]  ##move ahead only if method in this list
 
-        thres = {"src": 1, "tgt": self.config.model_params.load_weight_thres}            ##src-1,tgt-50
+        thres = {"src": 1, "tgt": 1}            ##src-1,tgt-1
         bank = {
             "src": self.get_attr("source", "memory_bank_wrapper").as_tensor(),
             "tgt": self.get_attr("target", "memory_bank_wrapper").as_tensor(),
@@ -700,11 +812,12 @@ class CDSAgent(BaseAgent):
         fewshot_label = {}
         fewshot_index = {}
 
-        is_tgt = (
-            method in ["tgt", "fewshot-tgt", "src-tgt"]
-            and self.current_epoch >= self.config.model_params.load_weight_epoch
-        )
-        ###  when current epoch>= 3, then is_tgt will become true
+        is_tgt = True
+        #(
+        #     method in ["tgt", "fewshot-tgt", "src-tgt"]
+        #     and self.current_epoch >=self.config.model_params.load_weight_epoch
+        # )
+        ###  when current epoch>= 0, then is_tgt will become true
 
         if method in ["fewshot", "fewshot-tgt"]:
             if self.fewshot:
@@ -726,16 +839,19 @@ class CDSAgent(BaseAgent):
             fewshot_index["tgt"] = mask.nonzero().squeeze(1)
 
         for domain in ("src", "tgt"):        #################edits to be made here
-            if domain == "tgt" and not is_tgt:
-                break
-            if domain == "src" and method == "tgt":
-                break
+            # if domain == "tgt" and not is_tgt:
+            #     break
+            # if domain == "src" and method == "tgt":
+            #     break
+
+            #The weights will now be updated for both src and tgt when number is greater than 1
 
             weight = self.cls_head.fc.weight.data    ###weights of all the 31 classes from last(fc) layer of cls_head  ##??
 
             for label in range(self.num_class):
+
                 fewshot_mask = fewshot_label[domain] == label     ##fewshots of the current class (there will be only one in DA-1 case)
-                if fewshot_mask.sum() < thres[domain]:   ##thres[src]=1 and thres[tgt]=50
+                if fewshot_mask.sum() < thres[domain]:   ##thres[src]=1 and thres[tgt]=1
                     continue
                 fewshot_ind = fewshot_index[domain][fewshot_mask]   ##list of indices of fewshots
                 bank_vec = bank[domain][fewshot_ind]       ##mem_bank represenatation of fewshots in source
@@ -746,7 +862,8 @@ class CDSAgent(BaseAgent):
                 ####$$$$$$$$$$$$$$@@@@@@@@@@@@@@@@&&&&&&$*()@((((((((((((
 
     # Validate
-    ###########################$$$$$$$$$$$$$$$
+    #################
+    # -----------------------------------DONE------------------------------------------
     @torch.no_grad()
     def validate(self):
         self.model.eval()    ##chnage mode of model
@@ -759,29 +876,40 @@ class CDSAgent(BaseAgent):
                 self.config.data_params.fewshot
                 and self.config.data_params.name not in ["visda17", "digits"]     ##True
             ):
-                self.score(
+                self.current_src_acc = self.score(
                     self.test_unl_loader_source,                   ##score only on unlballed images of dslr
                     name=f"unlabeled {self.domain_map['source']}",
                 )
 
-            self.current_val_metric = self.score(               ###This is accuracy on the target domain
+            self.current_tgt_acc = self.score(               ###This is accuracy on the target domain
                 self.test_unl_loader_target,                  ##score on unlableled images of target$$$$$$$
                 name=f"unlabeled {self.domain_map['target']}",
             )
 
         # update information
         self.current_val_iteration += 1
-        if self.current_val_metric >= self.best_val_metric:
-            self.best_val_metric = self.current_val_metric
-            self.best_val_epoch = self.current_epoch
-            self.iter_with_no_improv = 0
-        else:
-            self.iter_with_no_improv += 1
-        self.val_acc.append(self.current_val_metric)
+        if self.current_tgt_acc >= self.best_tgt_acc:
+            self.best_tgt_acc = self.current_tgt_acc
+            self.best_tgt_acc_epoch = self.current_epoch
+            #self.iter_with_no_improv = 0
+        #else:
+            #self.iter_with_no_improv += 1
+
+        if self.current_src_acc >= self.best_src_acc:
+            self.best_src_acc = self.current_src_acc
+            self.best_src_acc_epoch = self.current_epoch
+            #self.iter_with_no_improv = 0
+        #else:
+            #self.iter_with_no_improv += 1
+
+
+        self.tgt_val_acc.append(self.current_tgt_acc)
+        self.src_val_acc.append(self.current_src_acc)
 
         self.clear_train_features()
 
-    #################################
+    #################
+    # -----------------------------------DONE------------------------------------------
     @torch.no_grad()
     def score(self, loader, name="test"):  ##calcuate the score,accuracy and losses by computing ouptut from model,cls and compaoring with actual results
         correct = 0
@@ -904,6 +1032,7 @@ class CDSAgent(BaseAgent):
             raise e
 
     ################
+    # -----------------------------------DONE------------------------------------------
     def save_checkpoint(self, filename="checkpoint.pth.tar"):
         out_dict = {
             "config": self.config,
@@ -916,23 +1045,27 @@ class CDSAgent(BaseAgent):
             "iteration_source": self.get_attr("source", "current_iteration"),
             "iteration_target": self.get_attr("target", "current_iteration"),
             "val_iteration": self.current_val_iteration,
-            "val_acc": np.array(self.val_acc),
-            "val_metric": self.current_val_metric,
+            "tgt_val_acc": np.array(self.tgt_val_acc),
+            "src_val_acc": np.array(self.src_val_acc),
+            "current_tgt_acc": self.current_tgt_acc,
+            "current_src_acc": self.current_src_acc,
             "loss": self.current_loss,
             "train_loss": np.array(self.train_loss),
         }
         if self.cls:
             out_dict["cls_state_dict"] = self.cls_head.state_dict()
-        # best according to source-to-target
-        is_best = (
-            self.current_val_metric == self.best_val_metric
+
+        # best according to target
+        is_best_tgt = (
+            self.current_tgt_acc == self.best_tgt_acc
         ) or not self.config.validate_freq
         torchutils.save_checkpoint(
-            out_dict, is_best, filename=filename, folder=self.config.checkpoint_dir
+            out_dict, is_best_tgt, filename=filename, folder=self.config.checkpoint_dir
         )
         self.copy_checkpoint()
 
     ########################
+    # -----------------------------------DONE------------------------------------------
     # compute train features
     @torch.no_grad()
     def compute_train_features(self):
@@ -943,12 +1076,14 @@ class CDSAgent(BaseAgent):
         self.model.eval()                      ##sets the model ready for new mode
 
         for domain in ("source", "target"):
+
             train_loader = self.get_attr(domain, "train_init_loader")
             features, y, idx = [], [], []
 
             tqdm_batch = tqdm(
                 total=len(train_loader), desc=f"[Compute train features of {domain}]"          ##for progress bar
             )
+
             for batch_i, (indices, images, labels) in enumerate(train_loader):   ##gives batch index, and actual batch of data
                 images = images.to(self.device)
                 feat = self.model(images) ##forward propgates the batch of images in the resnet50 model and gets output from nn model
@@ -970,10 +1105,12 @@ class CDSAgent(BaseAgent):
             self.set_attr(domain, "train_indices", idx)
 
     #############
+    # -----------------------------------DONE------------------------------------------
     def clear_train_features(self):
         self.is_features_computed = False
 
     ########################
+    # -----------------------------------DONE------------------------------------------
     # Memory bank
     @torch.no_grad()
     def _init_memory_bank(self):

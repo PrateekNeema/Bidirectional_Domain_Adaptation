@@ -38,7 +38,8 @@ class BaseAgent(object):
         self.current_epoch = 0
         self.current_iteration = 0
         self.current_val_iteration = 0
-        self.val_acc = []
+        self.tgt_val_acc = []
+        self.src_val_acc = []
         self.train_loss = []
         self.lr_scheduler_list = []
 
@@ -54,9 +55,12 @@ class BaseAgent(object):
 
         # we need these to decide best loss
         self.current_loss = 0.0
-        self.current_val_metric = 0.0
-        self.best_val_metric = 0.0
-        self.best_val_epoch = 0
+        self.current_tgt_acc = 0.0
+        self.best_tgt_acc = 0.0
+        self.best_tgt_acc_epoch = 0
+        self.current_src_acc = 0.0
+        self.best_src_acc = 0.0
+        self.best_src_acc_epoch = 0
         self.iter_with_no_improv = 0
 
     def get_attr(self, domain, name):

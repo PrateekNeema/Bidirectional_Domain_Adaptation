@@ -1,0 +1,7 @@
+dslr/images/bike_helmet/frame_0001.jpg 2
+dslr/images/laptop_computer/frame_0001.jpg 12
+dslr/images/letter_tray/frame_0001.jpg 13
+dslr/images/mobile_phone/frame_0026.jpg 14
+dslr/images/phone/frame_0003.jpg 20
+dslr/images/ruler/frame_0005.jpg 25
+dslr/images/speaker/frame_0008.jpg 27
