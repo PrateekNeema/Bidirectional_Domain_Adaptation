@@ -552,7 +552,7 @@ class CDSAgent(BaseAgent):
                 batch_size = self.batch_size_dict[domain_name]
 
                 if self.cls:                                                     # and domain_name == "source":
-                    indices_lbd, images_lbd, labels_lbd = next(source_lbd_iter)
+                    batch_id_src_lbd,(indices_lbd, images_lbd, labels_lbd) = next(source_lbd_iter)
                     #these are the indices,images and labels of the feshots in the source
                     indices_lbd = indices_lbd.cuda()
                     images_lbd = images_lbd.cuda()
@@ -571,7 +571,7 @@ class CDSAgent(BaseAgent):
                     )
                     ## both source_loader and target_loader are full datasets
 
-                    indices_unl, images_unl, _ = next(loader_iter)
+                    batch_id_loader,(indices_unl, images_unl, _) = next(loader_iter)
                     # why are these named as unl when its full dataset??
                     # Also address the error of "Local variable 'target_iter' might be referenced before assignment"
                     images_unl = images_unl.cuda()
