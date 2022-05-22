@@ -551,8 +551,21 @@ class CDSAgent(BaseAgent):
                 loss_part_d = [0] * num_loss
                 batch_size = self.batch_size_dict[domain_name]
 
-                if self.cls:                                                     # and domain_name == "source":
-                    batch_id_src_lbd,(indices_lbd, images_lbd, labels_lbd) = next(source_lbd_iter)
+                if self.cls and domain_name == "source":
+                    #for batch_i, (indices, images, labels) in enumerate(train_loader): line 1087
+                    indices_lbd, images_lbd, labels_lbd = next(source_lbd_iter)     ##??
+                    #these are the indices,images and labels of the feshots in the source
+                    indices_lbd = indices_lbd.cuda()
+                    images_lbd = images_lbd.cuda()
+                    labels_lbd = labels_lbd.cuda()
+
+                    feat_lbd = self.model(images_lbd)
+                    feat_lbd = F.normalize(feat_lbd, dim=1)
+                    out_lbd = self.cls_head(feat_lbd)   ##passing fewshot images through model and cls_head
+                    ##softmax is only used to get probabilities
+                if self.cls and domain_name == "target":
+                    #batch_id_src_lbd,(indices_lbd, images_lbd, labels_lbd) = next(target_lbd_iter)
+                    indices_lbd, images_lbd, labels_lbd = next(target_lbd_iter)
                     #these are the indices,images and labels of the feshots in the source
                     indices_lbd = indices_lbd.cuda()
                     images_lbd = images_lbd.cuda()
@@ -571,7 +584,7 @@ class CDSAgent(BaseAgent):
                     )
                     ## both source_loader and target_loader are full datasets
 
-                    batch_id_loader,(indices_unl, images_unl, _) = next(loader_iter)
+                    indices_unl, images_unl,_ = next(loader_iter)
                     # why are these named as unl when its full dataset??
                     # Also address the error of "Local variable 'target_iter' might be referenced before assignment"
                     images_unl = images_unl.cuda()
@@ -922,7 +935,7 @@ class CDSAgent(BaseAgent):
         label = []
 
         #$$$$$$$$$$$$$one of the most important parts
-        for batch_i, (indices, images, labels) in enumerate(loader):
+        for batch_i, (indices, images, labels) in enumerate(loader):        ########
             images = images.cuda()
             labels = labels.cuda()
 
