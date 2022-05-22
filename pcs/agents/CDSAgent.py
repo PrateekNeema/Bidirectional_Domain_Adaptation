@@ -533,15 +533,10 @@ class CDSAgent(BaseAgent):
             # iteration over all labeled source images
             if self.cls and not batch_i % len(self.train_lbd_loader_source):
                 source_lbd_iter = iter(self.train_lbd_loader_source)
-            else:
-                source_lbd_iter = iter(self.train_lbd_loader_source)
 
             # iteration over all labeled target images
             if self.cls and not batch_i % len(self.train_lbd_loader_target):
                 target_lbd_iter = iter(self.train_lbd_loader_target)
-            else:
-                target_lbd_iter = iter(self.train_lbd_loader_target)
-
 
             # calculate loss
             for domain_name in ("source", "target"):
